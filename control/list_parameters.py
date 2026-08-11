@@ -137,6 +137,16 @@ def gather() -> dict:
     add("home", "nodes", len(home.get("nodes") or {}), "home_index")
     add("home", "desktop_hub", home.get("desktop_hub"), "home_index")
 
+    # quick access tools shortlist
+    try:
+        from quick_access_tools import as_records  # type: ignore
+
+        tools = as_records()
+        add("tools", "quick_access_count", len(tools), "quick_access_tools")
+        add("tools", "quick_access_ids", [t["id"] for t in tools], "quick_access_tools")
+    except Exception:
+        add("tools", "quick_access_count", 0, "quick_access_tools")
+
     return {
         "title": "Incorporate List Parameters",
         "ts": utc_now(),
