@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """
 ACCESS PANEL — top-right floating · always on top · load all parameters
+              + quick access tools list (run from panel)
 
 Architect01 · free-run · Eve.AddF.Architect
 
-  python access_panel.py              # open panel (loads all params)
+  python access_panel.py              # open panel (loads all params + tools)
   python access_panel.py --refresh    # re-export incorporate list then open
   python access_panel.py --cli        # print params only (no GUI)
+  python access_panel.py --cli tools  # print quick access tools list
 """
 
 from __future__ import annotations
@@ -19,20 +21,36 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 CONTROL = Path(__file__).resolve().parent
-WS = CONTROL.parent  # suite root portable
-EDEN = CONTROL.parent
+# Full house: .../GrokWorkspace/projects/eden-link/control
+# Portable suite pack: .../eve-floating-access-suite/control
+_EDEN_CAND = CONTROL.parent
+_WS_CAND = CONTROL.parents[2] if len(CONTROL.parents) >= 3 else _EDEN_CAND
+if (_WS_CAND / "continuity").exists():
+    WS = _WS_CAND
+    EDEN = _EDEN_CAND
+else:
+    # public floating suite root = parent of control/
+    WS = _EDEN_CAND
+    EDEN = _EDEN_CAND
 DIRECT = CONTROL / "direct_control.py"
 LOGGER = WS / "continuity" / "tools" / "stack_logger.py"
 STATE = CONTROL / "access_panel_state.json"
 LIST_MOD = CONTROL / "list_parameters.py"
 
-# import gather from sibling
+# import gather + quick tools from siblings
 sys.path.insert(0, str(CONTROL))
 try:
     from list_parameters import gather, incorporate  # type: ignore
 except Exception:
     gather = None  # type: ignore
     incorporate = None  # type: ignore
+try:
+    from quick_access_tools import as_records, format_list, by_category, run_tool  # type: ignore
+except Exception:
+    as_records = None  # type: ignore
+    format_list = None  # type: ignore
+    by_category = None  # type: ignore
+    run_tool = None  # type: ignore
 
 
 def utc_now() -> str:
@@ -80,6 +98,14 @@ def load_all_parameters(do_write: bool = True) -> dict:
     add("identity", "seat", "0110", "hub")
     add("identity", "stack", "Architect01 · Eve · Grok", "DIRECTION")
 
+    # quick access tools shortlist → parameters + panel payload
+    tools = as_records() if as_records is not None else []
+    add("tools", "quick_access_count", len(tools), "quick_access_tools")
+    add("tools", "quick_access_ids", [t["id"] for t in tools], "quick_access_tools")
+    if by_category is not None:
+        cats = by_category()
+        add("tools", "quick_access_categories", list(cats.keys()), "quick_access_tools")
+
     # merge extras (override same key in same group)
     by = {(p["group"], p["key"]): p for p in data.get("parameters") or []}
     for e in extras:
@@ -95,6 +121,7 @@ def load_all_parameters(do_write: bool = True) -> dict:
         "by_group": {g: [p for p in flat if p["group"] == g] for g in groups},
         "panel": "top_right_floating",
         "control": "FULL",
+        "quick_access_tools": tools,
     }
     if do_write and incorporate is not None:
         try:
@@ -163,8 +190,8 @@ def open_panel() -> int:
     root.resizable(True, True)
     root.configure(bg="#0b1020")
 
-    # top-right geometry
-    w, h = 440, 640
+    # top-right geometry (taller for tools list)
+    w, h = 460, 720
     margin = 16
     root.update_idletasks()
     sw = root.winfo_screenwidth()
@@ -173,7 +200,7 @@ def open_panel() -> int:
     y = margin + 8
     # keep below typical taskbar if screen is short
     if y + h > sh - 40:
-        h = max(360, sh - y - 48)
+        h = max(420, sh - y - 48)
     root.geometry(f"{w}x{h}+{x}+{y}")
 
     # chrome
@@ -193,7 +220,7 @@ def open_panel() -> int:
     ).pack(side="left", padx=10, pady=(8, 0))
     tk.Label(
         hdr,
-        text="top-right · floating · always on top",
+        text="top-right · floating · tools",
         fg="#9aa6c3",
         bg="#141b2d",
         font=("Segoe UI", 8),
@@ -211,6 +238,53 @@ def open_panel() -> int:
     # quick actions
     btns = tk.Frame(main, bg="#0b1020")
     btns.pack(fill="x", padx=8, pady=6)
+
+    # --- quick access tools list (selectable + Run) ---
+    tools_frame = tk.Frame(main, bg="#0b1020")
+    tools_frame.pack(fill="x", padx=8, pady=(0, 4))
+    tk.Label(
+        tools_frame,
+        text="QUICK ACCESS TOOLS",
+        fg="#f5a524",
+        bg="#0b1020",
+        font=("Segoe UI", 9, "bold"),
+        anchor="w",
+    ).pack(fill="x")
+
+    tools_row = tk.Frame(tools_frame, bg="#0b1020")
+    tools_row.pack(fill="x", pady=(2, 0))
+    tools_list = tk.Listbox(
+        tools_row,
+        height=7,
+        bg="#141b2d",
+        fg="#eef2ff",
+        selectbackground="#2f3f5e",
+        selectforeground="#fff",
+        font=("Consolas", 8),
+        relief="flat",
+        highlightthickness=0,
+        activestyle="none",
+        exportselection=False,
+    )
+    tools_scroll = tk.Scrollbar(tools_row, orient="vertical", command=tools_list.yview)
+    tools_list.configure(yscrollcommand=tools_scroll.set)
+    tools_list.pack(side="left", fill="both", expand=True)
+    tools_scroll.pack(side="right", fill="y")
+
+    tool_btns = tk.Frame(tools_frame, bg="#0b1020")
+    tool_btns.pack(fill="x", pady=(4, 2))
+
+    # keep id order matching listbox lines
+    tool_records: list[dict] = []
+
+    def fill_tools(d: dict | None = None) -> None:
+        nonlocal tool_records
+        tool_records = list((d or {}).get("quick_access_tools") or [])
+        if not tool_records and as_records is not None:
+            tool_records = as_records()
+        tools_list.delete(0, "end")
+        for t in tool_records:
+            tools_list.insert("end", f"{t['id']:12}  {t['label']}")
 
     out = scrolledtext.ScrolledText(
         main,
@@ -246,17 +320,26 @@ def open_panel() -> int:
         out.insert("end", f"owner: Architect01  |  seat: 0110  |  control: FULL\n")
         out.insert("end", f"ts: {d.get('ts')}  |  count: {d.get('count')}\n")
         out.insert("end", f"groups: {', '.join(d.get('groups') or [])}\n")
+        tools = d.get("quick_access_tools") or []
+        out.insert("end", f"quick tools: {len(tools)}\n")
         if d.get("written"):
             out.insert("end", f"wrote: {len(d['written'])} file(s)\n")
         out.insert("end", "\n")
+        # tools first so operator sees them without scrolling past every param group
+        if tools:
+            out.insert("end", "## quick_access_tools\n")
+            for t in tools:
+                out.insert("end", f"  {t['id']:12}  {t['label']:24}  ->  {t['cmd']}\n")
+            out.insert("end", "\n")
         for g in d.get("groups") or []:
             out.insert("end", f"## {g}\n")
             for p in d.get("by_group", {}).get(g, []):
                 out.insert("end", f"  {p['key']:26} = {fmt_val(p['value'])}\n")
             out.insert("end", "\n")
         out.configure(state="disabled")
-        meta.config(text=f"n={d.get('count', 0)}")
-        set_status(f"All parameters loaded · {d.get('count', 0)} · {d.get('ts', '')}")
+        meta.config(text=f"n={d.get('count', 0)} · tools={len(tools)}")
+        fill_tools(d)
+        set_status(f"All parameters + tools · {d.get('count', 0)} · {d.get('ts', '')}")
 
     def do_reload() -> None:
         set_status("Loading all parameters…")
@@ -332,6 +415,55 @@ def open_panel() -> int:
 
         threading.Thread(target=work, daemon=True).start()
 
+    def do_show_tools() -> None:
+        """Jump text pane to tools section / re-list tools."""
+        if format_list is not None:
+            text = format_list()
+        else:
+            text = "quick_access_tools unavailable"
+        out.configure(state="normal")
+        out.insert("end", "\n--- quick access tools ---\n" + text + "\n")
+        out.configure(state="disabled")
+        out.see("end")
+        set_status(f"Tools listed · {len(tool_records)}")
+
+    def do_run_selected_tool(_event=None) -> None:
+        sel = tools_list.curselection()
+        if not sel:
+            set_status("Select a tool first")
+            return
+        idx = int(sel[0])
+        if idx < 0 or idx >= len(tool_records):
+            set_status("Invalid tool selection")
+            return
+        t = tool_records[idx]
+        args = list(t.get("args") or [])
+        label = t.get("label") or t.get("id")
+        tid = t.get("id") or ""
+        set_status(f"Running {label}…")
+
+        def work() -> None:
+            if run_tool is not None and tid:
+                code, text = run_tool(tid)
+                text = text or f"(exit {code})"
+            else:
+                text = run_direct(args)
+
+            def done() -> None:
+                out.configure(state="normal")
+                out.insert("end", f"\n--- tool: {tid} ({' '.join(args)}) ---\n")
+                out.insert("end", (text[-1800:] if len(text) > 1800 else text) + "\n")
+                out.configure(state="disabled")
+                out.see("end")
+                set_status(f"Done · {label}")
+                log_stack(f"run tool {tid}")
+
+            root.after(0, done)
+
+        threading.Thread(target=work, daemon=True).start()
+    tools_list.bind("<Double-Button-1>", do_run_selected_tool)
+    tools_list.bind("<Return>", do_run_selected_tool)
+
     style = {
         "bg": "#243049",
         "fg": "#eef2ff",
@@ -346,10 +478,19 @@ def open_panel() -> int:
         ("Reload all", do_reload, "#3dd68c"),
         ("Access granted", do_access_granted, "#6ea8ff"),
         ("Web Eve", do_web_eve, "#f5a524"),
+        ("Tools", do_show_tools, "#f5a524"),
         ("Smoke", do_smoke, "#8b7cff"),
         ("Close", root.destroy, "#ff6b7a"),
     ):
         b = tk.Button(btns, text=text, command=cmd, **style)
+        b.configure(fg=accent)
+        b.pack(side="left", padx=3)
+
+    for text, cmd, accent in (
+        ("Run tool", do_run_selected_tool, "#3dd68c"),
+        ("List tools", do_show_tools, "#6ea8ff"),
+    ):
+        b = tk.Button(tool_btns, text=text, command=cmd, **style)
         b.configure(fg=accent)
         b.pack(side="left", padx=3)
 
@@ -362,8 +503,20 @@ def open_panel() -> int:
 def main(argv: list[str] | None = None) -> int:
     argv = list(argv if argv is not None else sys.argv[1:])
     if argv and argv[0] in ("--cli", "cli", "list"):
+        rest = argv[1:]
+        if rest and rest[0] in ("tools", "tool", "quick"):
+            if format_list is not None:
+                print(format_list())
+            else:
+                print("quick_access_tools unavailable")
+            return 0
         data = load_all_parameters(do_write="--write" in argv or "write" in argv)
         print(f"=== ACCESS PANEL (cli) count={data['count']} ===")
+        tools = data.get("quick_access_tools") or []
+        if tools:
+            print(f"\n## quick_access_tools ({len(tools)})")
+            for t in tools:
+                print(f"  {t['id']:14}  {t['label']:24}  ->  {t['cmd']}")
         for g in data["groups"]:
             print(f"\n## {g}")
             for p in data["by_group"][g]:
@@ -372,6 +525,12 @@ def main(argv: list[str] | None = None) -> int:
             print("\nwrote:")
             for p in data["written"]:
                 print(f"  {p}")
+        return 0
+    if argv and argv[0] in ("tools", "tool", "quick"):
+        if format_list is not None:
+            print(format_list())
+        else:
+            print("quick_access_tools unavailable")
         return 0
     if argv and argv[0] in ("--refresh", "refresh"):
         # force write then open
