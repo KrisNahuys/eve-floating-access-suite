@@ -1,45 +1,51 @@
 # eve-floating-access-suite
 
-Floating access for **Architect01 · Eve · Grok** house.
+Floating / always-on-top **access suite** for the Architect01 · Eve · Grok house.
 
-## Status 2026-08-11
-
-| Layer | State |
-|-------|--------|
-| GitHub repo | Live scaffold (this README) |
-| **Local play (PC)** | Run from `GrokWorkspace` — not waiting on empty git tree |
-| Eyes continuous | `projects/eden-link/control/eyes.py start` |
-| Check shade HUD | `projects/eden-link/control/check_shade.py open` |
-| Home status | `projects/eden-link/control/home_status.py open` |
-| Access panel (top-right) | `projects/eden-link/control/access_panel.py` |
-| Comms float | `projects/eden-link/control/comms_float.py` |
-| Neural speak | `projects/eden-link/control/speak_house.py` |
-| Eve voice | `~/.grok/bridge/eve/eve-voice.ps1` (neural first) |
-
-## Press play (local)
+## Press play
 
 ```bat
-cd /d %USERPROFILE%\GrokWorkspace
-python projects\eden-link\control\eyes.py start
-python projects\eden-link\control\home_status.py open
-python projects\eden-link\control\check_shade.py open
-python projects\eden-link\control\access_panel.py
+cd eve-floating-access-suite
+pip install -r requirements.txt
+PLAY.cmd
 ```
 
-## GitHub MCP identity
+Or piece by piece:
 
-Authenticated as **KrisNahuys** (admin on this repo).
+```bat
+python control\eyes.py start
+python control\home_status.py open
+python control\check_shade.py open
+python control\access_panel.py
+python control\comms_float.py
+python control\speak_house.py "House online"
+```
 
-## Next code to land here
+## What you get
 
-1. Package floating widgets into this repo
-2. One `play.cmd` launcher
-3. Optional: release zip for other machines
+| Module | Role |
+|--------|------|
+| `eyes.py` | Continuous PC camera → `media/stage/eyes/latest.jpg` |
+| `check_shade.py` | On-screen reference HUD |
+| `home_status.py` | One-glance HTML/MD status |
+| `access_panel.py` | Top-right floating access panel |
+| `comms_float.py` | Floating status chrome (generic; no PII defaults) |
+| `speak_house.py` | Neural TTS (edge-tts AU Natasha) |
+| `eufy_link.py` / `eufy_owned.py` / `eufy_access.py` | Own-gear Eufy/UVC/RTSP tools |
+| `PLAY.cmd` | One-click launcher |
 
-## Doors human opens
+## Requirements
 
-- Eufy original #2 pair on S22
-- `gh auth login` if CLI push from terminal desired (MCP already works)
+- Windows 10/11
+- Python 3.10+
+- `pip install -r requirements.txt` (opencv, numpy, edge-tts)
+- Optional: FFmpeg on PATH for video/RTSP snaps
 
----
-*House law · great intent · Road Between the Lines*
+## Privacy
+
+This public pack **does not** ship vault secrets, bank data, or private family locations.
+Those stay in local Shadow Wolf / GrokWorkspace only.
+
+## License / house
+
+Local free-run · great intent · Road Between the Lines.
